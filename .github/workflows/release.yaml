@@ -4,16 +4,17 @@ on:
   push:
     tags:
       - '*'
-    branches: [main]
-  pull_request:
-    branches: [main]
-    types: [opened, reopened]
+  # push:
+  #   branches: [main]
+  # pull_request:
+  #   branches: [main]
+  #   types: [opened, reopened]
 
 env:
   # update with the name of the main binary
   binary: tetris
   add_binaries_to_github_release: true
-  #itch_target: <itch.io-username>/<game-name>
+  itch_target: <itch.io-windysha>/<tetris>
 
 
 jobs:
