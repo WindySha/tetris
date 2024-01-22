@@ -60,8 +60,8 @@ git tag -a "tetris-1.6" -m "official release"
 git push --tags
 ```
 ### Snapshoot
-<img src="https://github.com/WindySha/tetris/blob/master/screenshot/01.png" width="580" height="300">
-<img src="https://github.com/WindySha/tetris/blob/master/screenshot/02.png" width="580" height="300">
+<img src="https://github.com/WindySha/tetris/blob/main/screenshot/01.png" width="580" height="300">
+<img src="https://github.com/WindySha/tetris/blob/main/screenshot/02.png" width="580" height="300">
 
 ## Acknowledgements 
 - [Bevy](https://bevyengine.org) - A refreshingly simple data-driven game engine built in Rust.
