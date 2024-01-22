@@ -1,101 +1,74 @@
-# Bevy GitHub CI Template
+# Tetris
 
-This repo show how to set up CI on a GitHub project for Bevy.
+This repository contains the source code for a classic Tetris game clone, built using the Bevy game engine.
 
-It creates two workflows:
+The game is cross-platform and supports Web, Linux, Windows, and MacOS.
 
-* [CI](#CI)
-* [Release](#Release)
+## Features
 
-## CI
+- **Classic Tetris gameplay**: Form complete lines to score points and prevent the block pile from reaching the top.
+- **Multiple Difficulty Levels**: Catering to both beginners and seasoned players.
+- **Block Projections**: See a projection of where the block will land, helping you plan your placements.
+- **Pause Mechanism**: Need to take a break? You can pause the game at any time.
+- **Cross-platform**: The game can be played on Web, Linux, Windows, and MacOS.
 
-Definition: [.github/workflows/ci.yaml](./.github/workflows/ci.yaml)
 
-This workflow runs on every commit to `main` branch, and on every PR targeting the `main` branch.
+## Gameplay Instructions
 
-It will use rust stable on linux, with cache between different executions, those commands:
+Here are the controls for the game:
 
-* `cargo test`
-* `cargo clippy -- -D warnings`
-* `cargo fmt --all -- --check`
+- **Up Arrow**: Rotate the block.
+- **Down Arrow**: Soft drop.
+- **Space**: Hard drop.
+- **Left/Right Arrows**: Move the block left or right.
+- **Esc**: Pause the game.
 
-If you are using anything OS specific or rust nightly, you should update the file [ci.yaml](./.github/workflows/ci.yaml) to use those.
+## Play It Online
+- [itch](https://windysha.itch.io/tetris)
+- [github page](https://windysha.github.io/tetris/)
 
-## Release
+## Getting Started
 
-Definition: [.github/workflows/release.yaml](./.github/workflows/release.yaml)
+Get a local copy,  and then run the following steps.
 
-This workflow runs on every tag.
-
-It will build:
-* For Linux and Windows, a .zip archive containing the executable and the `assets`.
-* For macOS, a dmg image with a .app containing the assets.
-* For wasm, a .zip archive with the wasm binary, the js bindings, an html file loading it, and the assets.
-
-If you don't want to target some of those platforms, you can remove the corresponding job from the file [release.yaml](./.github/workflows/release.yaml).
-
-If you don't want to attach the builds to the GitHub release, set `env.add_binaries_to_github_release` to `false`.
-
-### Git Tag from GitHub UI
-
-You can follow [Managing releases in a repository](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
-
-### Git Tag from the CLI
-
-Execute the following commands: 
-
-```sh
-git tag -a "my-game-1.0" -m "First official release"
-git push --tags
+### Linux/Mac/Win
+```
+$ cargo build
+or
+$ cargo run
+```
+### Web
+First, install toolchains:
+```
+$ rustup target add wasm32-unknown-unknown
+$ cargo install wasm-bindgen-cli
+```
+Then, compile wasm and copy file to out directory:
+```
+$ ./build_wasm.sh
 ```
 
-### Result
+Run the website:
+```
+$ cd wasm/
+$ python3 -m http.server
+```
+### Github Action
+Execute the following commands:
+```
+git tag -a "tetris-1.6" -m "official release"
+git push --tags
+```
+### Snapshoot
+<img src="https://github.com/WindySha/tetris/blob/master/screenshot/01.png" width="580" height="300">
+<img src="https://github.com/WindySha/tetris/blob/master/screenshot/02.png" width="580" height="300">
 
-A new release will be available in GitHub, with the archives per platform available as downloadable assets.
+## Acknowledgements 
+- [Bevy](https://bevyengine.org) - A refreshingly simple data-driven game engine built in Rust.
+- [bevy_github_ci_template](https://github.com/bevyengine/bevy_github_ci_template)
+- [Rotation_systems](https://strategywiki.org/wiki/Tetris/Rotation_systems)
+- [play-tetris](https://tetris.com/play-tetris)
+- [bevy-tetris](https://github.com/corbamico/bevy-tetris)
 
-The `git` commands above produced this release: [my-game-1.0](
-https://github.com/bevyengine/bevy_github_ci_template/releases/tag/my-game-1.0).
-
-## Using the workflows in your own project
-
-If you would like to use the GitHub workflows included here for your own project, there are a few things you might have to adapt:
-
-1. The release workflow relies on the `index.html` file under `/wasm` for web builds
-2. Make sure that the env variable `binary` ([release.yaml](.github/workflows/release.yaml#L10)) matches the name of your binary
-3. In case your project doesn't have an `assets` folder
-   1. Either create one and put a `.gitkeep` file in it to be able to push it
-   2. Or remove the `cp -r assets` statements in the build jobs
-4. Adapt the used toolchain if you are using nightly
-5. In your GitHub repo's settings, under `Actions -> General` make sure "Read and Write permissions" is selected under "Workflow permissions" near the bottom. This fixes the error `Error: Resource not accessible by integration`.
-
-
-### Publish on itch.io
-
-The release flow can be configured to push the releases to itch.io:
-
-1. Create an API key in https://itch.io/user/settings/api-keys
-2. Go to the repository's Settings tab in GitHub, click on Secrets->Actions in the sidebar,and add a repository secret named `BUTLER_CREDENTIALS` set to the API key.
-3. Uncomment `env.itch_target` in `release.yaml` and set it to the itch.io username and the name of the game on itch.io, separated by a slash (`/`)
-
-Once that is done, any tag pushed to GitHub will trigger an itch.io release and use the tag as the [user version](https://itch.io/docs/butler/pushing.html#specifying-your-own-version-number).
-
-## License
-
-Licensed under either of
-
-* Apache License, Version 2.0
-   ([LICENSE-APACHE-2.0](LICENSE-Apache-2.0) or <http://www.apache.org/licenses/LICENSE-2.0>)
-* MIT License
-   ([LICENSE-MIT](LICENSE-MIT) or <http://opensource.org/licenses/MIT>)
-* CC0-1.0 License
-   ([LICENSE-CC0-1.0](LICENSE-CC0-1.0) or <https://creativecommons.org/publicdomain/zero/1.0/legalcode>)
-
-at your option.
-
-The Ducky sprite is CC-0 licensed by [Caz Creates Games](https://caz-creates-games.itch.io/ducky-2).
-
-## Contribution
-
-Unless you explicitly state otherwise, any contribution intentionally submitted
-for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
-triple licensed as above, without any additional terms or conditions.
+## Licence
+This project is licensed under the Apache License 2.0 - see the [LICENSE](https://github.com/WindySha/tetris/blob/main/LICENSE-Apache-2.0) file for more details.
