@@ -13,18 +13,16 @@ opt-level = 1
 
 # https://github.com/johnthagen/min-sized-rust
 [profile.release]
-lto = "thin"
-strip = true      # Automatically strip symbols from the binary.
-opt-level = "z"   # Optimize for size.
-panic = "abort"
+opt-level = "z"
+debug = false
+lto = true
+debug-assertions = false
 codegen-units = 1
-
-# Enable high optimizations for dependencies (incl. Bevy), but not for our code:
-[profile.dev.package."*"]
-opt-level = 3
+panic = "abort"
+strip = true
 
 [dependencies]
 bevy = "0.12.1"
-bevy-inspector-egui="0.21.0"
+# bevy-inspector-egui="0.21.0"
 rand = "0.8.5"
 lazy_static = "1.4"

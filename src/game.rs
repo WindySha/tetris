@@ -1,6 +1,6 @@
 use bevy::{
     prelude::{OnEnter, OnExit, Plugin, Update},
-    window::{WindowFocused},
+    window::WindowFocused,
 };
 
 use crate::{
@@ -10,7 +10,7 @@ use crate::{
     data::PauseStateRes,
     menu::{GameLevelRes, GameSelectedLevel},
     position::Position,
-    utils::{despawn_with_component, get_speed, get_level, get_score},
+    utils::{despawn_with_component, get_level, get_score, get_speed},
     GameState,
 };
 
@@ -43,6 +43,7 @@ pub struct GameScoresRes {
 
 static ENABLE_SHOWING_SHADOW_BRICK: AtomicBool = AtomicBool::new(true);
 static ENABLE_SHOWING_BOARD_LINES: AtomicBool = AtomicBool::new(true);
+static ENABLE_7_BAG_RANDOMIZATION: AtomicBool = AtomicBool::new(true);
 
 lazy_static! {
     pub static ref BRICK_COLOR_MAP: HashMap<BrickType, String> = HashMap::from([
@@ -106,18 +107,28 @@ impl Plugin for GamePlugin {
         .insert_resource(PauseStateRes::new(false, false))
         .add_systems(
             Update,
-            (
+            ((
                 brick_fall_down_system,
+                apply_deferred,
                 rotate_brick_key_event,
+                apply_deferred,
+                hard_drop_key_event,
+                apply_deferred,
+                move_brick_key_event,
+                apply_deferred,
                 soft_drop_key_event,
             )
+                .chain(),)
                 .run_if(is_not_pause_state.and_then(in_state(GameState::Game))),
         )
         .add_systems(
             Update,
             pause_state_changed_event.run_if(in_state(GameState::Game)),
         )
-        .add_systems(OnEnter(GameState::Game), (setup_game_data, apply_deferred, setup_tetris).chain())
+        .add_systems(
+            OnEnter(GameState::Game),
+            (setup_game_data, apply_deferred, setup_tetris).chain(),
+        )
         .add_systems(
             OnExit(GameState::Game),
             despawn_with_component::<BoardBundle>,
@@ -167,6 +178,12 @@ fn setup_game_data(
                 Ordering::Relaxed,
                 Ordering::Relaxed,
             );
+            let _ = ENABLE_7_BAG_RANDOMIZATION.compare_exchange(
+                false,
+                true,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            );
         }
         GameSelectedLevel::Normal => {
             duration = DEFAULT_NORMAL_FALLING_SPEED;
@@ -177,6 +194,12 @@ fn setup_game_data(
                 Ordering::Relaxed,
             );
             let _ = ENABLE_SHOWING_BOARD_LINES.compare_exchange(
+                false,
+                true,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            );
+            let _ = ENABLE_7_BAG_RANDOMIZATION.compare_exchange(
                 false,
                 true,
                 Ordering::Relaxed,
@@ -197,6 +220,12 @@ fn setup_game_data(
                 Ordering::Relaxed,
                 Ordering::Relaxed,
             );
+            let _ = ENABLE_7_BAG_RANDOMIZATION.compare_exchange(
+                true,
+                false,
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            );
         }
     }
 
@@ -212,14 +241,11 @@ fn setup_game_data(
     game_scores_stored.lines = 0;
 }
 
-fn setup_tetris(
-    mut commands: Commands,
-    asset_server: Res<AssetServer>,
-) {
+fn setup_tetris(mut commands: Commands, asset_server: Res<AssetServer>) {
     spawn_board(&mut commands, &Board::new());
     spawn_game_info(&mut commands, &asset_server);
     spawn_next_brick_title(&mut commands, &asset_server);
-    spawn_next_brick(&mut commands, Brick::new());
+    spawn_next_brick(&mut commands, Brick::new(ENABLE_7_BAG_RANDOMIZATION.load(Ordering::Relaxed)));
 }
 
 #[inline]
@@ -261,28 +287,21 @@ fn brick_fall_down_system(
 
     let create_new_next_brick_func = |commands: &mut Commands| {
         commands.entity(next_brick.0).despawn_recursive();
-        spawn_next_brick(commands, Brick::new());
+        spawn_next_brick(commands, Brick::new(ENABLE_7_BAG_RANDOMIZATION.load(Ordering::Relaxed)));
     };
 
     let Ok(mut moving_brick) = moving_brick_query.get_single_mut() else {
-        // in the initial state, no moving exists, so create a new one and the shadow brick 
-        let brick = &next_brick.1.0;
+        // in the initial state, no moving exists, so create a new one and the shadow brick
+        let brick = &next_brick.1 .0;
         let init_brick_position = create_brick_start_position(&brick.0);
 
-        let bottom_pos = board.1.0.get_bottom_valid_brick_pos(
-            brick,
-            &init_brick_position);
+        let bottom_pos = board
+            .1
+             .0
+            .get_bottom_valid_brick_pos(brick, &init_brick_position);
 
-        spawn_brick(
-            &mut commands,
-            brick,
-            &init_brick_position
-        );
-        spawn_shadow_brick(
-            &mut commands,
-            brick,
-            &bottom_pos
-        );
+        spawn_brick(&mut commands, brick, &init_brick_position);
+        spawn_shadow_brick(&mut commands, brick, &bottom_pos);
 
         // recreate the next brick
         create_new_next_brick_func(&mut commands);
@@ -396,6 +415,30 @@ fn soft_drop_key_event(
     }
 }
 
+fn hard_drop_key_event(
+    keyboard_input: Res<Input<KeyCode>>,
+    mut moving_brick_query: Query<(Entity, &mut MovingBrickBundle, &mut Transform)>,
+    board_query: Query<&mut BoardBundle>,
+) {
+    if keyboard_input.just_pressed(KeyCode::Space) {
+        let Ok(mut moving_brick) = moving_brick_query.get_single_mut() else {
+            return;
+        };
+        let Ok(board) = board_query.get_single() else {
+            return;
+        };
+        let current_brick = moving_brick.1.brick;
+        let moving_pos = &mut moving_brick.1.moving_pos;
+
+        while board.0.is_valid_brick(&current_brick, &moving_pos.down()) {
+            moving_pos.down_assign();
+            moving_brick.2.translation.y -= BLOCK_WIDTH;
+        }
+        // hard dropped, then it cannot be moved again
+        moving_brick.1.movable = false;
+    }
+}
+
 fn rotate_brick_key_event(
     mut commands: Commands,
     keyboard_input: Res<Input<KeyCode>>,
@@ -403,11 +446,50 @@ fn rotate_brick_key_event(
     shadow_brick_query: Query<Entity, With<ShadowBrickBundle>>,
     board_query: Query<&mut BoardBundle>,
 ) {
-    if !(keyboard_input.just_pressed(KeyCode::Up)
-        || keyboard_input.just_pressed(KeyCode::W)
-        || keyboard_input.just_pressed(KeyCode::Left)
-        || keyboard_input.just_pressed(KeyCode::Right)
-        || keyboard_input.just_pressed(KeyCode::Space))
+    if !(keyboard_input.just_pressed(KeyCode::Up)) {
+        return;
+    }
+
+    // use "let else"
+    let Ok(mut moving_brick) = moving_brick_query.get_single_mut() else {
+        return;
+    };
+    let Ok(board) = board_query.get_single() else {
+        return;
+    };
+
+    // when the brick fast dropped down, it become non movable.
+    if !moving_brick.1.movable {
+        return;
+    }
+
+    let rotated_brick = moving_brick.1.brick.rotate_right();
+    let moving_pos = &mut moving_brick.1.moving_pos;
+
+    if board
+        .0
+        .is_valid_brick_for_rotation(&rotated_brick, moving_pos)
+    {
+        let bottom_pos = board
+            .0
+            .get_bottom_valid_brick_pos(&rotated_brick, moving_pos);
+        spawn_brick(&mut commands, &rotated_brick, moving_pos);
+        spawn_shadow_brick(&mut commands, &rotated_brick, &bottom_pos);
+        if let Ok(shadow_bricks) = shadow_brick_query.get_single() {
+            commands.entity(shadow_bricks).despawn_recursive();
+        }
+        commands.entity(moving_brick.0).despawn_recursive();
+    }
+}
+
+fn move_brick_key_event(
+    mut commands: Commands,
+    keyboard_input: Res<Input<KeyCode>>,
+    mut moving_brick_query: Query<(Entity, &mut MovingBrickBundle, &mut Transform)>,
+    shadow_brick_query: Query<Entity, With<ShadowBrickBundle>>,
+    board_query: Query<&mut BoardBundle>,
+) {
+    if !(keyboard_input.just_pressed(KeyCode::Left) || keyboard_input.just_pressed(KeyCode::Right))
     {
         return;
     }
@@ -425,65 +507,33 @@ fn rotate_brick_key_event(
         return;
     }
 
-    if keyboard_input.just_pressed(KeyCode::Up) || keyboard_input.just_pressed(KeyCode::W) {
-        let rotated_brick = moving_brick.1.brick.rotate_right();
-        let moving_pos = &mut moving_brick.1.moving_pos;
+    let is_left_moving = keyboard_input.just_pressed(KeyCode::Left);
 
-        if board
-            .0
-            .is_valid_brick_for_rotation(&rotated_brick, moving_pos)
-        {
-            let bottom_pos = board
-                .0
-                .get_bottom_valid_brick_pos(&rotated_brick, moving_pos);
-            spawn_brick(&mut commands, &rotated_brick, moving_pos);
-            spawn_shadow_brick(&mut commands, &rotated_brick, &bottom_pos);
-            if let Ok(shadow_bricks) = shadow_brick_query.get_single() {
-                commands.entity(shadow_bricks).despawn_recursive();
-            }
-            commands.entity(moving_brick.0).despawn_recursive();
-        }
-    } else if keyboard_input.just_pressed(KeyCode::Left)
-        || keyboard_input.just_pressed(KeyCode::Right)
-    {
-        let is_left_moving = keyboard_input.just_pressed(KeyCode::Left);
+    let current_brick = moving_brick.1.brick;
+    let moving_pos = moving_brick.1.moving_pos;
 
-        let current_brick = moving_brick.1.brick;
-        let moving_pos = moving_brick.1.moving_pos;
+    let next_pos = if is_left_moving {
+        moving_pos.left()
+    } else {
+        moving_pos.right()
+    };
 
-        let next_pos = if is_left_moving {
-            moving_pos.left()
+    if board.0.is_valid_brick(&current_brick, &next_pos) {
+        moving_brick.1.moving_pos = next_pos;
+        if is_left_moving {
+            moving_brick.2.translation.x -= BLOCK_WIDTH;
         } else {
-            moving_pos.right()
-        };
-
-        if board.0.is_valid_brick(&current_brick, &next_pos) {
-            moving_brick.1.moving_pos = next_pos;
-            if is_left_moving {
-                moving_brick.2.translation.x -= BLOCK_WIDTH;
-            } else {
-                moving_brick.2.translation.x += BLOCK_WIDTH;
-            }
-            // dismiss shadow brick
-            if let Ok(shadow_bricks) = shadow_brick_query.get_single() {
-                commands.entity(shadow_bricks).despawn_recursive();
-            }
-            let bottom_pos = board
-                .0
-                .get_bottom_valid_brick_pos(&current_brick, &next_pos);
-            // redraw shadow brick
-            spawn_shadow_brick(&mut commands, &current_brick, &bottom_pos);
+            moving_brick.2.translation.x += BLOCK_WIDTH;
         }
-    } else if keyboard_input.just_pressed(KeyCode::Space) {
-        let current_brick = moving_brick.1.brick;
-        let moving_pos = &mut moving_brick.1.moving_pos;
-
-        while board.0.is_valid_brick(&current_brick, &moving_pos.down()) {
-            moving_pos.down_assign();
-            moving_brick.2.translation.y -= BLOCK_WIDTH;
+        // dismiss shadow brick
+        if let Ok(shadow_bricks) = shadow_brick_query.get_single() {
+            commands.entity(shadow_bricks).despawn_recursive();
         }
-        // hard dropped, then it cannot be moved again
-        moving_brick.1.movable = false;
+        let bottom_pos = board
+            .0
+            .get_bottom_valid_brick_pos(&current_brick, &next_pos);
+        // redraw shadow brick
+        spawn_shadow_brick(&mut commands, &current_brick, &bottom_pos);
     }
 }
 
@@ -503,12 +553,16 @@ fn spawn_brick(commands: &mut Commands, brick: &Brick, moving_pos: &Position) {
         .insert(MovingBrickBundle {
             moving_pos: *moving_pos,
             brick: brick.clone(),
-            movable: true
+            movable: true,
         })
         .with_children(|parent| {
             for pos in brick.1 {
                 let color = Color::hex(&BRICK_COLOR_MAP[&brick.0]).unwrap();
-                parent.spawn(sprite_bundle(BLOCK_WIDTH, color, position_to_vec2(&pos, 0.3)));
+                parent.spawn(sprite_bundle(
+                    BLOCK_WIDTH,
+                    color,
+                    position_to_vec2(&pos, 0.3),
+                ));
             }
         });
 }
@@ -533,8 +587,12 @@ fn spawn_shadow_brick(commands: &mut Commands, brick: &Brick, shadow_pos: &Posit
         .insert(ShadowBrickBundle)
         .with_children(|parent| {
             for pos in brick.1 {
-                let color = Color::rgb_u8(90,90,90);
-                parent.spawn(sprite_bundle(BLOCK_WIDTH, color, position_to_vec2(&pos, 0.2)));
+                let color = Color::rgb_u8(90, 90, 90);
+                parent.spawn(sprite_bundle(
+                    BLOCK_WIDTH,
+                    color,
+                    position_to_vec2(&pos, 0.2),
+                ));
             }
         });
 }
@@ -585,12 +643,19 @@ fn spawn_board(commands: &mut Commands, board: &Board) {
             // this is the background color view
             parent.spawn(SpriteBundle {
                 transform: Transform {
-                    translation: Vec3::new((board_width) / 2. - BLOCK_WIDTH / 2., (board_height) / 2. - BLOCK_WIDTH / 2., 0.0),
+                    translation: Vec3::new(
+                        (board_width) / 2. - BLOCK_WIDTH / 2.,
+                        (board_height) / 2. - BLOCK_WIDTH / 2.,
+                        0.0,
+                    ),
                     ..default()
                 },
                 sprite: Sprite {
                     color: line_color,
-                    custom_size: Some(Vec2::new(board_width + BLOCK_INSET, board_height + BLOCK_INSET)),
+                    custom_size: Some(Vec2::new(
+                        board_width + BLOCK_INSET,
+                        board_height + BLOCK_INSET,
+                    )),
                     ..default()
                 },
                 ..default()
@@ -684,7 +749,11 @@ fn spawn_next_brick(commands: &mut Commands, brick: Brick) {
         .with_children(|parent| {
             for pos in brick.1 {
                 let color = Color::hex(&BRICK_COLOR_MAP[&brick.0]).unwrap();
-                parent.spawn(sprite_bundle(BLOCK_WIDTH, color, position_to_vec2(&pos, 0.1)));
+                parent.spawn(sprite_bundle(
+                    BLOCK_WIDTH,
+                    color,
+                    position_to_vec2(&pos, 0.1),
+                ));
             }
         })
         .insert(NextBrickBundle(brick));

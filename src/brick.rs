@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+use std::sync::{Mutex, OnceLock};
 
 use rand::prelude::*;
 
@@ -20,10 +22,34 @@ pub enum BrickType {
 pub struct Brick(pub BrickType, pub [Position; 4]);
 
 impl Brick {
-    pub fn new() -> Self {
-        let type_size = BRICKS_MAP.len();
-        // choose a brick type
-        let type_index: usize = rand::thread_rng().gen_range(0..type_size);
+    pub fn new(use_bag7: bool) -> Self {
+        let type_index: usize;
+        if use_bag7 {
+            // use 7 bag randomization algorithm
+            static S_BRICK_BAG_VEC: OnceLock<Mutex<VecDeque<usize>>> = OnceLock::new();
+            let brick_bag_vec = S_BRICK_BAG_VEC.get_or_init(|| {
+                let mut m = VecDeque::new();
+                m.reserve(7);
+                Mutex::new(m)
+            });
+
+            let mut data = brick_bag_vec.lock().unwrap();
+
+            if data.len() == 0 {
+                let mut items = vec![0, 1, 2, 3, 4, 5, 6];
+                let mut rng = thread_rng();
+                items.shuffle(&mut rng);
+
+                for item in items {
+                    data.push_back(item);
+                }
+            }
+            type_index = data.pop_front().unwrap_or(0);
+        } else {
+            // use normal randomization algorithm
+            type_index = rand::thread_rng().gen_range(0..BRICKS_MAP.len());
+        }
+
         let brick_type = match type_index {
             0 => BrickType::O,
             1 => BrickType::I,
